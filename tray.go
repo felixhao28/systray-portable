@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 	"os/signal"
 	"reflect"
@@ -60,23 +59,23 @@ type ClickEvent struct {
 	InternalID int    `json:"__id"`
 }
 
-func readLine(reader *bufio.Reader) io.Reader {
+func readJSON(reader *bufio.Reader, v interface{}) error {
 	input, err := reader.ReadString('\n')
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		return err
 	}
 	if len(input) < 1 {
-		return strings.NewReader("")
+		return fmt.Errorf("Empty line")
 	}
-	return strings.NewReader(input[0 : len(input)-1])
-}
 
-func readAction(reader *bufio.Reader) Action {
-	var action Action
-	if err := json.NewDecoder(readLine(reader)).Decode(&action); err != nil {
-		fmt.Fprintln(os.Stderr, err)
+	// fmt.Fprintf(os.Stderr, "got line: %s\n", input)
+
+	lineReader := strings.NewReader(input[0 : len(input)-1])
+	if err := json.NewDecoder(lineReader).Decode(v); err != nil {
+		return err
 	}
-	return action
+
+	return nil
 }
 
 func addMenuItem(items *[]*systray.MenuItem, rawItems *[]*Item, seqID2InternalID *[]int, internalID2SeqID *map[int]int, item *Item, parent *systray.MenuItem) {
@@ -129,10 +128,10 @@ func onReady() {
 			switch sig {
 			case os.Interrupt, syscall.SIGTERM:
 				//handle SIGINT, SIGTERM
-				fmt.Println("Quit")
+				fmt.Fprintln(os.Stderr, "Quit")
 				systray.Quit()
 			default:
-				fmt.Println("Unhandled signal:", sig)
+				fmt.Fprintln(os.Stderr, "Unhandled signal:", sig)
 			}
 		}
 	}()
@@ -143,20 +142,24 @@ func onReady() {
 		items := make([]*systray.MenuItem, 0)
 		seqID2InternalID := make([]int, 0)
 		internalID2SeqID := make(map[int]int)
-		// fmt.Println(items)
 		fmt.Println(`{"type": "ready"}`)
 		reader := bufio.NewReader(os.Stdin)
-		// println(readLine(reader))
+
 		var menu Menu
-		err := json.NewDecoder(readLine(reader)).Decode(&menu)
-		if err != nil {
+		if err := readJSON(reader, &menu); err != nil {
 			fmt.Fprintln(os.Stderr, err)
+			systray.Quit()
+			return
 		}
 		// fmt.Println("menu", menu)
+
 		icon, err := base64.StdEncoding.DecodeString(menu.Icon)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
+			systray.Quit()
+			return
 		}
+
 		systray.SetIcon(icon)
 		systray.SetTitle(menu.Title)
 		systray.SetTooltip(menu.Tooltip)
@@ -216,8 +219,9 @@ func onReady() {
 				icon, err := base64.StdEncoding.DecodeString(menu.Icon)
 				if err != nil {
 					fmt.Fprintln(os.Stderr, err)
+				} else {
+					systray.SetIcon(icon)
 				}
-				systray.SetIcon(icon)
 			}
 			if menu.Tooltip != m.Tooltip {
 				menu.Tooltip = m.Tooltip
@@ -253,13 +257,18 @@ func onReady() {
 				}
 			}
 			for {
-				action := readAction(reader)
+				var action Action
+				if err := readJSON(reader, &action); err != nil {
+					fmt.Fprintln(os.Stderr, err)
+					systray.Quit()
+					break
+				}
 				update(action)
 			}
 		}(reader)
 
 		stdoutEnc := json.NewEncoder(os.Stdout)
-		// {"type": "update-item", "item": {"Title":"aa3","Tooltip":"bb","Enabled":true,"Checked":true}, "seqID": 0}
+		// {"type": "update-item", "item": {"title":"aa3","tooltip":"bb","enabled":true,"checked":true}, "__id": 0}
 		for {
 			itemsCnt := 0
 			for _, ch := range items {

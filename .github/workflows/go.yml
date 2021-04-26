@@ -45,7 +45,7 @@ jobs:
     #     asset_path: ${{ matrix.binary }}
     #     asset_name: ${{ matrix.rawName }}
     #     asset_content_type: application/octet-stream
-    - name: Upload to artifacat
+    - name: Upload artifact
       uses: actions/upload-artifact@v2
       with:
         name: ${{ matrix.rawName }}

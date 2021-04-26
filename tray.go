@@ -245,8 +245,8 @@ func onReady() {
 		}
 
 		go func(reader *bufio.Reader) {
-			for i := 0; i < len(menu.Items); i++ {
-				item := menu.Items[i]
+			for i := 0; i < len(items); i++ {
+				item := rawItems[i]
 				menuItem := items[i]
 				if menuItem != nil && item.Hidden {
 					menuItem.Hide()
